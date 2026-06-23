@@ -1,0 +1,16 @@
+# Global logging format
+global:
+  logging:
+    format: json
+    level: info
+
+# Service mesh defaults
+mesh:
+  enabled: true
+  mtls: true
+
+# Tracing defaults
+tracing:
+  enabled: true
+  provider: opentelemetry
+  endpoint: http://otel-collector:4318

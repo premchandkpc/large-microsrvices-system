@@ -1,0 +1,490 @@
+version: "3.8"
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  platform-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres-data:
+  redis-data:
+  elasticsearch-data:
+  qdrant-data:
+  minio-data:
+  kafka-data:
+  zookeeper-data:
+  grafana-data:
+  prometheus-data:
+
+services:
+  # ============================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: platform-postgres
+    environment:
+      POSTGRES_USER: platform
+      POSTGRES_PASSWORD: platform_secret_2024
+      POSTGRES_DB: platform_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  redis:
+    image: redis:7-alpine
+    container_name: platform-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+
+  elasticsearch:
+    image: elasticsearch:8.11.0
+    container_name: platform-elasticsearch
+    environment:
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200/_cluster/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    container_name: platform-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  minio:
+    image: minio/minio:latest
+    container_name: platform-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: platformadmin
+      MINIO_ROOT_PASSWORD: platform_secret_2024
+      MINIO_REGION: us-east-1
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging: *default-logging
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: platform-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: platform-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: platform-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8088:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: platform-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - platform-net
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.1
+    container_name: platform-keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin_secret
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/platform_db
+      KC_DB_USERNAME: platform
+      KC_DB_PASSWORD: platform_secret_2024
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/keycloak/realms:/opt/keycloak/data/import
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  # ============================================
+  # MONITORING
+  # ============================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: platform-prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - platform-net
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    logging: *default-logging
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: platform-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: grafana_secret
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  # ============================================
+  # APPLICATION SERVICES
+  # ============================================
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: platform-api-gateway
+    ports:
+      - "8081:8081"
+    environment:
+      AUTH_SERVICE_ADDR: auth-service:50051
+      USER_SERVICE_ADDR: user-service:50052
+      DOCUMENT_INGESTION_ADDR: document-ingestion:50053
+      SEARCH_SERVICE_ADDR: search-service:50054
+      NOTIFICATION_SERVICE_ADDR: notification-service:50055
+      REDIS_ADDR: redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: platform-auth-service
+    ports:
+      - "50051:50051"
+      - "8082:8082"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres:5432/platform_db
+      DB_USER: platform
+      DB_PASSWORD: platform_secret_2024
+      REDIS_ADDR: redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  user-service:
+    build:
+      context: ./services/user-service
+      dockerfile: Dockerfile
+    container_name: platform-user-service
+    ports:
+      - "50052:50052"
+      - "8083:8083"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres:5432/platform_db
+      DB_USER: platform
+      DB_PASSWORD: platform_secret_2024
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  document-ingestion:
+    build:
+      context: ./services/document-ingestion
+      dockerfile: Dockerfile
+    container_name: platform-document-ingestion
+    ports:
+      - "50053:50053"
+      - "8084:8084"
+    environment:
+      STORAGE_TYPE: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: platformadmin
+      S3_SECRET_KEY: platform_secret_2024
+      S3_REGION: us-east-1
+      S3_BUCKET: documents
+      KAFKA_BROKERS: kafka:29092
+      REDIS_ADDR: redis:6379
+    depends_on:
+      minio:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  document-processing:
+    build:
+      context: ./services/document-processing
+      dockerfile: Dockerfile
+    container_name: platform-document-processing
+    ports:
+      - "8085:8085"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      REDIS_ADDR: redis:6379
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      STORAGE_TYPE: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: platformadmin
+      S3_SECRET_KEY: platform_secret_2024
+      S3_BUCKET: documents
+    depends_on:
+      kafka:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  search-service:
+    build:
+      context: ./services/search-service
+      dockerfile: Dockerfile
+    container_name: platform-search-service
+    ports:
+      - "50054:50054"
+      - "8086:8086"
+    environment:
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+      REDIS_ADDR: redis:6379
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      qdrant:
+        condition: service_started
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: platform-notification-service
+    ports:
+      - "50055:50055"
+      - "8087:8087"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      REDIS_ADDR: redis:6379
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    depends_on:
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  orchestration-service:
+    build:
+      context: ./services/orchestration-service
+      dockerfile: Dockerfile
+    container_name: platform-orchestration-service
+    ports:
+      - "8088:8088"
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      REDIS_ADDR: redis:6379
+      POSTGRES_URL: postgresql://platform:platform_secret_2024@postgres:5432/platform_db
+    depends_on:
+      kafka:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: platform-analytics-service
+    ports:
+      - "8089:8089"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres:5432/platform_db
+      DB_USER: platform
+      DB_PASSWORD: platform_secret_2024
+      KAFKA_BROKERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    networks:
+      - platform-net
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: platform-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      REACT_APP_API_GATEWAY_URL: http://localhost:8081
+      REACT_APP_AUTH_URL: http://localhost:8082
+    depends_on:
+      - api-gateway
+    networks:
+      - platform-net
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: platform-mailhog
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    networks:
+      - platform-net

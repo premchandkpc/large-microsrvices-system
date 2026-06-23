@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package platform.document.v1;
+
+option go_package = "github.com/premchandkpc/large-microsrvices-system/proto/document/v1;documentv1";
+option java_package = "com.platform.document.proto.v1";
+
+service DocumentService {
+  rpc GetDocument(GetDocumentRequest) returns (Document);
+  rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
+  rpc ProcessDocument(ProcessDocumentRequest) returns (ProcessDocumentResponse);
+  rpc GetProcessingStatus(GetProcessingStatusRequest) returns (ProcessingStatus);
+}
+
+message Document {
+  string id = 1;
+  string user_id = 2;
+  string filename = 3;
+  string content_type = 4;
+  int64 size_bytes = 5;
+  string status = 6;
+  repeated string tags = 7;
+  map<string, string> metadata = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+
+message GetDocumentRequest {
+  string document_id = 1;
+  string tenant_id = 2;
+}
+
+message ListDocumentsRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  string status_filter = 5;
+}
+
+message ListDocumentsResponse {
+  repeated Document documents = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message ProcessDocumentRequest {
+  string document_id = 1;
+  string pipeline_type = 2;
+  map<string, string> options = 3;
+}
+
+message ProcessDocumentResponse {
+  string job_id = 1;
+  string status = 2;
+}
+
+message GetProcessingStatusRequest {
+  string job_id = 1;
+}
+
+message ProcessingStatus {
+  string job_id = 1;
+  string status = 2;
+  int32 progress = 3;
+  string error_message = 4;
+  string started_at = 5;
+  string completed_at = 6;
+}

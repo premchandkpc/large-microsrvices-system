@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: analytics-service
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/platform_db}
+    username: ${DB_USER:platform}
+    password: ${DB_PASSWORD:platform_secret_2024}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    consumer:
+      group-id: analytics-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
+
+server:
+  port: ${PORT:8089}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
