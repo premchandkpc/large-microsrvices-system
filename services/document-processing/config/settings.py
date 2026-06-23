@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     elasticsearch_index: str = "documents"
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-4-turro-preview"
+    openai_model: str = "gpt-4-turbo-preview"
     embedding_model: str = "text-embedding-3-small"
 
     ollama_base_url: str = "http://localhost:11434"
@@ -32,8 +32,8 @@ class Settings(BaseSettings):
 
     storage_type: str = "s3"
     s3_endpoint: str = "http://localhost:9000"
-    s3_access_key: str = "platformadmin"
-    s3_secret_key: str = "platform_secret_2024"
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
     s3_region: str = "us-east-1"
     s3_bucket: str = "documents"
 

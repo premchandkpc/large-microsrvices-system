@@ -44,7 +44,7 @@ func main() {
 	router.Use(middleware.RequestID())
 	router.Use(middleware.Logger(logger))
 	router.Use(middleware.Recovery(logger))
-	router.Use(middleware.RateLimiter(cfg))
+	router.Use(middleware.RateLimiterMiddleware(cfg))
 
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "api-gateway"})

@@ -1,0 +1,271 @@
+namespace: platform
+environment: production
+
+image:
+  registry: 000000000000.dkr.ecr.us-east-1.amazonaws.com
+  tag: latest
+  pullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+  host: platform.example.com
+  sslCertArn: arn:aws:acm:us-east-1:000000000000:certificate/placeholder
+
+services:
+  api-gateway:
+    enabled: true
+    replicas: 3
+    port: 8081
+    grpcPort: 50051
+    image: api-gateway
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 1Gi
+    hpa:
+      minReplicas: 3
+      maxReplicas: 10
+      cpuTarget: 70
+      memoryTarget: 80
+    probes:
+      liveness:
+        path: /health
+        initialDelay: 10
+        periodSeconds: 15
+      readiness:
+        path: /ready
+        initialDelay: 5
+        periodSeconds: 10
+
+  auth-service:
+    enabled: true
+    replicas: 2
+    port: 8082
+    grpcPort: 50051
+    image: auth-service
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTarget: 75
+    probes:
+      liveness:
+        path: /actuator/health
+        initialDelay: 30
+        periodSeconds: 20
+      readiness:
+        path: /actuator/health/readiness
+        initialDelay: 20
+        periodSeconds: 15
+
+  user-service:
+    enabled: true
+    replicas: 2
+    port: 8083
+    grpcPort: 50052
+    image: user-service
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 5
+      cpuTarget: 75
+    probes:
+      liveness:
+        path: /actuator/health
+        initialDelay: 30
+        periodSeconds: 20
+
+  document-ingestion:
+    enabled: true
+    replicas: 2
+    port: 8084
+    grpcPort: 50053
+    image: document-ingestion
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 6
+      cpuTarget: 70
+    probes:
+      liveness:
+        path: /health
+        initialDelay: 10
+        periodSeconds: 15
+
+  document-processing:
+    enabled: true
+    replicas: 2
+    port: 8085
+    image: document-processing
+    resources:
+      requests:
+        cpu: 1000m
+        memory: 2Gi
+      limits:
+        cpu: 4000m
+        memory: 4Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 10
+      cpuTarget: 70
+    probes:
+      liveness:
+        path: /health
+        initialDelay: 15
+        periodSeconds: 20
+
+  search-service:
+    enabled: true
+    replicas: 2
+    port: 8086
+    grpcPort: 50054
+    image: search-service
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 1Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 8
+      cpuTarget: 70
+    probes:
+      liveness:
+        path: /health
+        initialDelay: 10
+        periodSeconds: 15
+
+  notification-service:
+    enabled: true
+    replicas: 2
+    port: 8087
+    grpcPort: 50055
+    image: notification-service
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 5
+      cpuTarget: 70
+    probes:
+      liveness:
+        path: /health
+        initialDelay: 10
+        periodSeconds: 15
+
+  orchestration-service:
+    enabled: true
+    replicas: 2
+    port: 8088
+    image: orchestration-service
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 5
+      cpuTarget: 70
+    probes:
+      liveness:
+        path: /health
+        initialDelay: 10
+        periodSeconds: 15
+
+  analytics-service:
+    enabled: true
+    replicas: 2
+    port: 8089
+    image: analytics-service
+    resources:
+      requests:
+        cpu: 500m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 5
+      cpuTarget: 75
+    probes:
+      liveness:
+        path: /actuator/health
+        initialDelay: 30
+        periodSeconds: 20
+
+  frontend:
+    enabled: true
+    replicas: 2
+    port: 3000
+    image: frontend
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    hpa:
+      minReplicas: 2
+      maxReplicas: 5
+      cpuTarget: 70
+    probes:
+      liveness:
+        path: /
+        initialDelay: 10
+        periodSeconds: 15
+
+global:
+  kafka:
+    brokers: kafka-cluster-kafka-bootstrap.kafka:9092
+  redis:
+    addr: redis-cluster.redis:6379
+  postgres:
+    url: jdbc:postgresql://postgres.platform:5432/platform_db
+    host: postgres.platform
+    port: 5432
+    database: platform_db
+    user: platform
+  elasticsearch:
+    url: http://elasticsearch.platform:9200
+  qdrant:
+    host: qdrant.platform
+    port: 6333
+  otel:
+    endpoint: http://otel-collector.platform:4317
+  s3:
+    endpoint: http://minio.platform:9000
+    bucket: documents
+    region: us-east-1

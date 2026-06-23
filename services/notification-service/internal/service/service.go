@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"github.com/google/uuid"
-	"github.com/premchandkpc/large-microsrvices-system/services/notification-service/internal/config"
 	"github.com/premchandkpc/large-microsrvices-system/services/notification-service/internal/model"
 	"github.com/premchandkpc/large-microsrvices-system/services/notification-service/internal/provider"
 	"go.uber.org/zap"
 )
 
 type WebSocketHub interface {
-	Register(userID string, conn interface{})
+	Register(userID string, conn *websocket.Conn)
 	Unregister(userID string)
 	Send(userID string, message []byte) error
 }

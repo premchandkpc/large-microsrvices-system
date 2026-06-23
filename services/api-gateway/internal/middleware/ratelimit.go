@@ -41,7 +41,7 @@ func (rl *RateLimiter) GetLimiter(ip string) *rate.Limiter {
 	return limiter
 }
 
-func RateLimiter(cfg *config.Config) gin.HandlerFunc {
+func RateLimiterMiddleware(cfg *config.Config) gin.HandlerFunc {
 	rl := NewRateLimiter(rate.Limit(cfg.RateLimit), cfg.RateLimitBurst)
 
 	go func() {

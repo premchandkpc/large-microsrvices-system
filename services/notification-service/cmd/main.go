@@ -13,7 +13,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/segmentio/kafka-go"
-	"github.com/segmentio/kafka-go/compress"
 	"github.com/premchandkpc/large-microsrvices-system/services/notification-service/internal/config"
 	"github.com/premchandkpc/large-microsrvices-system/services/notification-service/internal/handler"
 	"github.com/premchandkpc/large-microsrvices-system/services/notification-service/internal/provider"
@@ -70,7 +69,6 @@ func main() {
 		GroupID:     "notification-service",
 		MinBytes:    10,
 		MaxBytes:    10e6,
-		Compression: compress.Snappy,
 		MaxWait:     1 * time.Second,
 		StartOffset: kafka.LastOffset,
 	})
@@ -107,7 +105,13 @@ func main() {
 		upgrader := websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
-			CheckOrigin:     func(r *http.Request) bool { return true },
+			CheckOrigin: func(r *http.Request) bool {
+				origin := r.Header.Get("Origin")
+				if cfg.Environment == "development" || origin == "" {
+					return true
+				}
+				return false
+			},
 		}
 		conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
@@ -148,9 +152,15 @@ func main() {
 }
 
 func initLogger(cfg *config.Config) *zap.Logger {
-	logger, _ := zap.NewProduction()
+	var logger *zap.Logger
+	var err error
 	if cfg.Environment == "development" {
-		logger, _ = zap.NewDevelopment()
+		logger, err = zap.NewDevelopment()
+	} else {
+		logger, err = zap.NewProduction()
+	}
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize logger: %v", err))
 	}
 	return logger
 }

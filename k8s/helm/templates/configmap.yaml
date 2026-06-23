@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+  namespace: {{ .Values.namespace }}
+data:
+  ENVIRONMENT: {{ .Values.environment }}
+  KAFKA_BROKERS: {{ .Values.global.kafka.brokers }}
+  REDIS_ADDR: {{ .Values.global.redis.addr }}
+  ELASTICSEARCH_URL: {{ .Values.global.elasticsearch.url }}
+  QDRANT_HOST: {{ .Values.global.qdrant.host }}
+  QDRANT_PORT: "{{ .Values.global.qdrant.port }}"
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.global.otel.endpoint }}
+  S3_ENDPOINT: {{ .Values.global.s3.endpoint }}
+  S3_REGION: {{ .Values.global.s3.region }}
+  S3_BUCKET: {{ .Values.global.s3.bucket }}
+  LOG_FORMAT: json
+  LOG_LEVEL: info
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: {{ .Values.namespace }}
+data:
+  DB_HOST: {{ .Values.global.postgres.host }}
+  DB_PORT: "{{ .Values.global.postgres.port }}"
+  DB_DATABASE: {{ .Values.global.postgres.database }}
+  DB_USER: {{ .Values.global.postgres.user }}
+  DB_URL: {{ .Values.global.postgres.url }}

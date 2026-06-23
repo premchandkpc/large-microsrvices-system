@@ -26,10 +26,23 @@ func NewHandler(svc *service.ServiceRegistry, logger *zap.Logger, cfg *config.Co
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,
 			CheckOrigin: func(r *http.Request) bool {
-				return true
+				origin := r.Header.Get("Origin")
+				if cfg.Environment == "development" || origin == "" {
+					return true
+				}
+				for _, allowed := range cfg.CorsAllowedOrigins {
+					if origin == allowed {
+						return true
+					}
+				}
+				return false
 			},
 		},
 	}
+}
+
+func (h *Handler) Health(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "api-gateway"})
 }
 
 func (h *Handler) Login(c *gin.Context) {
